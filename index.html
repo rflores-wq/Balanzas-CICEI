@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>LabBalance — Registro de Balanzas</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;0,800;1,300&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2333;
+    --border: #2a3050;
+    --accent: #4fffb0;
+    --accent2: #ff6b6b;
+    --accent3: #ffd166;
+    --text: #e8ecf4;
+    --text-muted: #6b7a99;
+    --radius: 14px;
+    --font-display: 'Fraunces', serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); overflow: hidden; }
+
+  /* ── SCREENS ── */
+  .screen { display: none; flex-direction: column; height: 100dvh; overflow: hidden; }
+  .screen.active { display: flex; }
+
+  /* ── LOGIN ── */
+  #screen-login {
+    background: radial-gradient(ellipse at 30% 20%, #1a2a4a 0%, #0f1117 60%);
+    align-items: center; justify-content: center; padding: 2rem;
+    position: relative; overflow: hidden;
+  }
+  .login-glow {
+    position: absolute; width: 300px; height: 300px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(79,255,176,0.08) 0%, transparent 70%);
+    top: -50px; right: -80px;
+  }
+  .login-glow2 {
+    position: absolute; width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,107,107,0.06) 0%, transparent 70%);
+    bottom: 50px; left: -60px;
+  }
+  .login-box { width: 100%; max-width: 380px; z-index: 1; }
+  .login-logo { margin-bottom: 2.5rem; }
+  .login-logo h1 { font-family: var(--font-display); font-size: 2.4rem; font-weight: 800; color: var(--accent); letter-spacing: -1px; }
+  .login-logo p { color: var(--text-muted); font-size: 0.78rem; letter-spacing: 0.08em; margin-top: 4px; }
+  .field-label { font-size: 0.7rem; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .field { margin-bottom: 1.2rem; }
+  input[type="text"], select, input[type="date"], input[type="number"] {
+    width: 100%; background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-family: var(--font-mono);
+    font-size: 0.9rem; padding: 0.75rem 1rem; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none; appearance: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,255,176,0.1); }
+  select option { background: var(--surface2); }
+  .btn {
+    width: 100%; padding: 0.85rem; border: none; border-radius: var(--radius);
+    font-family: var(--font-mono); font-size: 0.9rem; font-weight: 500;
+    cursor: pointer; transition: transform 0.15s, opacity 0.2s; letter-spacing: 0.05em;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #0f1117; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1.5px solid var(--border); }
+  .btn-danger { background: rgba(255,107,107,0.15); color: var(--accent2); border: 1.5px solid rgba(255,107,107,0.3); }
+  .btn-sm { width: auto; padding: 0.5rem 1rem; font-size: 0.78rem; }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.2rem; background: var(--surface);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .header-title { font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; color: var(--accent); }
+  .header-sub { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent) 0%, #00c97a 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700; color: #0f1117; flex-shrink: 0;
+  }
+
+  /* ── SCROLL BODY ── */
+  .scroll-body { flex: 1; overflow-y: auto; padding: 1.2rem; -webkit-overflow-scrolling: touch; }
+
+  /* ── BOTTOM NAV ── */
+  .bottom-nav {
+    display: flex; background: var(--surface); border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .nav-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 0.8rem 0.5rem; background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 0.62rem;
+    letter-spacing: 0.05em; transition: color 0.2s; gap: 4px;
+  }
+  .nav-btn.active { color: var(--accent); }
+  .nav-btn svg { width: 20px; height: 20px; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius); padding: 1rem; margin-bottom: 0.8rem;
+  }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.6rem; }
+  .card-title { font-family: var(--font-display); font-size: 1rem; font-weight: 600; }
+  .badge {
+    font-size: 0.65rem; padding: 3px 8px; border-radius: 20px; font-weight: 500; letter-spacing: 0.05em;
+  }
+  .badge-green { background: rgba(79,255,176,0.15); color: var(--accent); }
+  .badge-red { background: rgba(255,107,107,0.15); color: var(--accent2); }
+  .badge-yellow { background: rgba(255,209,102,0.15); color: var(--accent3); }
+  .badge-blue { background: rgba(100,160,255,0.15); color: #64a0ff; }
+  .meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; font-size: 0.68rem; padding: 3px 10px; margin: 2px;
+  }
+
+  /* ── FORM SECTION ── */
+  .section-title {
+    font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.1em; margin-bottom: 0.8rem; margin-top: 1.2rem;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content:''; flex:1; height:1px; background: var(--border); }
+
+  /* ── PESAJE ROWS ── */
+  .pesaje-row {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.8rem; margin-bottom: 0.6rem; position: relative;
+  }
+  .pesaje-row .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .btn-remove {
+    position: absolute; top: 0.5rem; right: 0.5rem;
+    background: none; border: none; color: var(--accent2);
+    font-size: 1.1rem; cursor: pointer; line-height: 1; padding: 2px 6px;
+  }
+  .btn-add {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 0.65rem; border: 1.5px dashed var(--border);
+    border-radius: 10px; background: none; color: var(--accent);
+    font-family: var(--font-mono); font-size: 0.8rem; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s; margin-top: 0.4rem;
+  }
+  .btn-add:hover { background: rgba(79,255,176,0.05); border-color: var(--accent); }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--accent); color: #0f1117; padding: 0.6rem 1.2rem;
+    border-radius: 20px; font-size: 0.8rem; font-weight: 500;
+    opacity: 0; transition: opacity 0.3s, transform 0.3s; z-index: 999; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--accent2); color: #fff; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .filter-bar select { flex: 1; }
+  .filter-bar input { flex: 1; }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 3rem 1rem; color: var(--text-muted); text-align: center; gap: 0.8rem;
+  }
+  .empty svg { opacity: 0.3; }
+  .empty p { font-size: 0.82rem; }
+
+  /* ── DIVIDER ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+  /* ── MODAL OVERLAY ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 100; align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    padding: 1.5rem; width: 100%; max-width: 500px;
+    max-height: 90dvh; overflow-y: auto;
+  }
+  .modal-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; margin-bottom: 1.2rem; }
+
+  /* ── RECORD DETAIL ── */
+  .detail-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { color: var(--text-muted); }
+
+  /* ── GESTOR TABS ── */
+  .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .tab-btn {
+    flex: 1; padding: 0.6rem; border-radius: 10px; border: 1.5px solid var(--border);
+    background: none; color: var(--text-muted); font-family: var(--font-mono);
+    font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
+  }
+  .tab-btn.active { background: var(--accent); color: #0f1117; border-color: var(--accent); }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(79,255,176,0.3); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ LOGIN ═══════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-glow"></div>
+  <div class="login-glow2"></div>
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>LabBalance</h1>
+      <p>REGISTRO DE BALANZAS DE LABORATORIO</p>
+    </div>
+    <div class="field">
+      <div class="field-label">Tu nombre completo</div>
+      <input type="text" id="login-name" placeholder="Ej. María García" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <div class="field-label">Rol</div>
+      <select id="login-role">
+        <option value="estudiante">Estudiante</option>
+        <option value="gestor">Gestor de Laboratorio</option>
+      </select>
+    </div>
+    <div id="gestor-pass-field" class="field" style="display:none">
+      <div class="field-label">Contraseña de gestor</div>
+      <input type="text" id="gestor-pass" placeholder="••••••"/>
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">Entrar →</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ ESTUDIANTE ═══════════════════════════════════ -->
+<div id="screen-student" class="screen">
+  <div class="header">
+    <div>
+      <div class="header-title">LabBalance</div>
+      <div class="header-sub" id="student-header-name"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="avatar" id="student-avatar"></div>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div style="display:flex;flex:1;flex-direction:column;overflow:hidden;">
+    <!-- Tab: Mis registros -->
+    <div id="student-tab-list" class="scroll-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <span style="font-family:var(--font-display);font-size:1.1rem;font-weight:600;">Mis registros</span>
+        <button class="btn btn-primary btn-sm" onclick="showNewForm()">+ Nuevo</button>
+      </div>
+      <div id="student-records-list"></div>
+    </div>
+
+    <!-- Tab: Nuevo registro (form) -->
+    <div id="student-tab-form" class="scroll-body" style="display:none;">
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem;">
+        <button class="btn btn-secondary btn-sm" onclick="backToList()">← Volver</button>
+        <span id="form-title" style="font-family:var(--font-display);font-size:1rem;font-weight:600;">Nuevo registro</span>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Fecha</div>
+        <input type="date" id="form-date"/>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Tipo de balanza</div>
+        <select id="form-scale" onchange="onScaleChange()">
+          <option value="">— Seleccionar —</option>
+          <option value="kg">Balanza de kg (hasta 20 kg)</option>
+          <option value="gramera">Balanza gramera (hasta 500-1000 g)</option>
+          <option value="analitica">Balanza analítica (mg / µg)</option>
+          <option value="filtros">Balanza analítica de filtros</option>
+        </select>
+      </div>
+
+      <!-- Categoría (solo no-filtros) -->
+      <div id="form-category-wrap" style="display:none;">
+        <div class="field">
+          <div class="field-label">Categoría de pesaje</div>
+          <select id="form-category" onchange="onCategoryChange()">
+            <option value="">— Seleccionar —</option>
+            <option value="reactivo">Reactivo</option>
+            <option value="misc">Misceláneo</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Reactivo -->
+      <div id="form-reactivo-wrap" style="display:none;">
+        <div class="field">
+          <div class="field-label">Nombre del reactivo</div>
+          <input type="text" id="form-reactivo-name" placeholder="Ej. NaCl, H2SO4…"/>
+        </div>
+        <div class="section-title">Pesajes</div>
+        <div id="pesajes-container"></div>
+        <button class="btn-add" onclick="addPesaje()">＋ Agregar otro pesaje</button>
+      </div>
+
+      <!-- Misceláneo -->
+      <div id="form-misc-wrap" style="display:none;">
+        <div class="field">
+          <div class="field-label">Tipo de misceláneo</div>
+          <select id="form-misc-type">
+            <option value="">— Seleccionar —</option>
+            <option value="Vidrio">Vidrio</option>
+            <option value="Balón">Balón</option>
+            <option value="Crisol">Crisol</option>
+            <option value="Cápsula de porcelana">Cápsula de porcelana</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+        <div class="section-title">Pesajes</div>
+        <div id="pesajes-misc-container"></div>
+        <button class="btn-add" onclick="addPesajeMisc()">＋ Agregar otro pesaje</button>
+      </div>
+
+      <!-- Filtro -->
+      <div id="form-filtro-wrap" style="display:none;">
+        <div class="field">
+          <div class="field-label">Tipo de filtro</div>
+          <select id="form-filtro-type">
+            <option value="">— Seleccionar —</option>
+            <option value="Fibra de vidrio">Fibra de vidrio</option>
+            <option value="Papel">Papel</option>
+            <option value="Whatman">Whatman</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+        <div class="section-title">Pesajes</div>
+        <div id="pesajes-filtro-container"></div>
+        <button class="btn-add" onclick="addPesajeFiltro()">＋ Agregar otro pesaje</button>
+      </div>
+
+      <div id="form-actions" style="display:none;margin-top:1.5rem;display:flex;flex-direction:column;gap:0.6rem;">
+        <button class="btn btn-primary" id="save-btn" onclick="saveRecord()">Guardar registro</button>
+        <button class="btn btn-secondary" onclick="backToList()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" id="nav-list-btn" onclick="switchStudentTab('list')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="2" rx="1"/><rect x="3" y="11" width="18" height="2" rx="1"/><rect x="3" y="17" width="12" height="2" rx="1"/></svg>
+      Registros
+    </button>
+    <button class="nav-btn" id="nav-send-btn" onclick="sendToGestor()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      Enviar
+    </button>
+    <button class="nav-btn" onclick="doLogout()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      Salir
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ GESTOR ═══════════════════════════════════ -->
+<div id="screen-gestor" class="screen">
+  <div class="header">
+    <div>
+      <div class="header-title">Panel de Gestor</div>
+      <div class="header-sub" id="gestor-header-name"></div>
+    </div>
+    <div class="avatar" style="background:linear-gradient(135deg,#ff6b6b,#ff9f43);" id="gestor-avatar"></div>
+  </div>
+
+  <div class="scroll-body">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-todos-btn" onclick="gestorTab('todos')">Todos</button>
+      <button class="tab-btn" id="tab-pendientes-btn" onclick="gestorTab('pendientes')">Pendientes</button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filter-bar">
+      <select id="gestor-filter-student" onchange="renderGestorRecords()">
+        <option value="">Todos los estudiantes</option>
+      </select>
+      <select id="gestor-filter-scale" onchange="renderGestorRecords()">
+        <option value="">Todas las balanzas</option>
+        <option value="kg">Balanza kg</option>
+        <option value="gramera">Balanza gramera</option>
+        <option value="analitica">Balanza analítica</option>
+        <option value="filtros">Balanza filtros</option>
+      </select>
+    </div>
+
+    <div id="gestor-records-list"></div>
+
+    <button class="btn btn-primary" onclick="exportExcel()" style="margin-top:1rem;">
+      ↓ Exportar a Excel (.csv)
+    </button>
+    <button class="btn btn-secondary" onclick="doLogout()" style="margin-top:0.6rem;">Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL: Detalle de registro ═══════════ -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <div class="modal-title">Detalle de registro</div>
+      <button onclick="closeModal('detail-modal')" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;">×</button>
+    </div>
+    <div id="detail-content"></div>
+    <div id="detail-actions" style="margin-top:1rem;display:flex;flex-direction:column;gap:0.6rem;"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════
+//   STATE
+// ════════════════════════════════════════
+const GESTOR_PASSWORD = "gestor2024";
+let currentUser = null; // { name, role }
+let currentEditId = null;
+let gestorCurrentTab = 'todos';
+let pesajeCount = 0;
+
+// ════════════════════════════════════════
+//   STORAGE
+// ════════════════════════════════════════
+function getRecords() {
+  return JSON.parse(localStorage.getItem('lb_records') || '[]');
+}
+function saveRecords(arr) {
+  localStorage.setItem('lb_records', JSON.stringify(arr));
+}
+function getSentIds() {
+  return JSON.parse(localStorage.getItem('lb_sent') || '[]');
+}
+function setSentIds(arr) {
+  localStorage.setItem('lb_sent', JSON.stringify(arr));
+}
+
+// ════════════════════════════════════════
+//   UTILS
+// ════════════════════════════════════════
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function initials(name) { return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+function formatDate(d) {
+  if (!d) return '—';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+function isEditable(rec) {
+  if (rec.sentToGestor) return false;
+  const created = new Date(rec.createdAt);
+  const now = new Date();
+  return (now - created) < 48*60*60*1000;
+}
+function scaleLabel(v) {
+  return {kg:'Balanza kg (hasta 20 kg)', gramera:'Balanza gramera (500-1000 g)', analitica:'Balanza analítica (mg/µg)', filtros:'Balanza analítica de filtros'}[v] || v;
+}
+function categoryLabel(v) {
+  return {reactivo:'Reactivo', misc:'Misceláneo', filtro:'Filtro'}[v] || v;
+}
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError?' error':'');
+  setTimeout(()=>{ t.className='toast'; }, 2600);
+}
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+
+// ════════════════════════════════════════
+//   LOGIN
+// ════════════════════════════════════════
+document.getElementById('login-role').addEventListener('change', function(){
+  document.getElementById('gestor-pass-field').style.display = this.value === 'gestor' ? 'block' : 'none';
+});
+function doLogin() {
+  const name = document.getElementById('login-name').value.trim();
+  const role = document.getElementById('login-role').value;
+  if (!name) { showToast('Ingresa tu nombre', true); return; }
+  if (role === 'gestor') {
+    const pass = document.getElementById('gestor-pass').value;
+    if (pass !== GESTOR_PASSWORD) { showToast('Contraseña incorrecta', true); return; }
+  }
+  currentUser = { name, role };
+  if (role === 'estudiante') {
+    document.getElementById('student-header-name').textContent = name;
+    document.getElementById('student-avatar').textContent = initials(name);
+    renderStudentRecords();
+    showScreen('screen-student');
+  } else {
+    document.getElementById('gestor-header-name').textContent = name;
+    document.getElementById('gestor-avatar').textContent = initials(name);
+    renderGestorRecords();
+    populateStudentFilter();
+    showScreen('screen-gestor');
+  }
+}
+function doLogout() {
+  currentUser = null;
+  document.getElementById('login-name').value = '';
+  document.getElementById('login-role').value = 'estudiante';
+  document.getElementById('gestor-pass').value = '';
+  document.getElementById('gestor-pass-field').style.display = 'none';
+  showScreen('screen-login');
+}
+
+// ════════════════════════════════════════
+//   STUDENT NAV
+// ════════════════════════════════════════
+function switchStudentTab(tab) {
+  if (tab === 'list') {
+    document.getElementById('student-tab-list').style.display = '';
+    document.getElementById('student-tab-form').style.display = 'none';
+    document.getElementById('nav-list-btn').classList.add('active');
+    document.getElementById('nav-send-btn').classList.remove('active');
+    renderStudentRecords();
+  }
+}
+function showNewForm(editId=null) {
+  currentEditId = editId;
+  resetForm();
+  document.getElementById('student-tab-list').style.display = 'none';
+  document.getElementById('student-tab-form').style.display = '';
+  document.getElementById('form-title').textContent = editId ? 'Editar registro' : 'Nuevo registro';
+  document.getElementById('save-btn').textContent = editId ? 'Actualizar registro' : 'Guardar registro';
+  document.getElementById('form-actions').style.display = 'flex';
+
+  if (editId) {
+    const rec = getRecords().find(r=>r.id===editId);
+    if (rec) prefillForm(rec);
+  } else {
+    // today
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('form-date').value = today;
+  }
+  closeModal('detail-modal');
+}
+function backToList() {
+  currentEditId = null;
+  document.getElementById('student-tab-list').style.display = '';
+  document.getElementById('student-tab-form').style.display = 'none';
+  renderStudentRecords();
+}
+
+// ════════════════════════════════════════
+//   FORM LOGIC
+// ════════════════════════════════════════
+function resetForm() {
+  document.getElementById('form-date').value = '';
+  document.getElementById('form-scale').value = '';
+  document.getElementById('form-category').value = '';
+  document.getElementById('form-reactivo-name').value = '';
+  document.getElementById('form-misc-type').value = '';
+  document.getElementById('form-filtro-type').value = '';
+  document.getElementById('form-category-wrap').style.display = 'none';
+  document.getElementById('form-reactivo-wrap').style.display = 'none';
+  document.getElementById('form-misc-wrap').style.display = 'none';
+  document.getElementById('form-filtro-wrap').style.display = 'none';
+  document.getElementById('pesajes-container').innerHTML = '';
+  document.getElementById('pesajes-misc-container').innerHTML = '';
+  document.getElementById('pesajes-filtro-container').innerHTML = '';
+  pesajeCount = 0;
+}
+
+function onScaleChange() {
+  const v = document.getElementById('form-scale').value;
+  document.getElementById('form-category-wrap').style.display = (v && v!=='filtros') ? 'block' : 'none';
+  document.getElementById('form-category').value = '';
+  document.getElementById('form-reactivo-wrap').style.display = 'none';
+  document.getElementById('form-misc-wrap').style.display = 'none';
+  document.getElementById('pesajes-container').innerHTML = '';
+  document.getElementById('pesajes-misc-container').innerHTML = '';
+
+  if (v === 'filtros') {
+    document.getElementById('form-filtro-wrap').style.display = 'block';
+    document.getElementById('pesajes-filtro-container').innerHTML = '';
+    addPesajeFiltro();
+  } else {
+    document.getElementById('form-filtro-wrap').style.display = 'none';
+  }
+}
+function onCategoryChange() {
+  const cat = document.getElementById('form-category').value;
+  document.getElementById('form-reactivo-wrap').style.display = cat==='reactivo' ? 'block' : 'none';
+  document.getElementById('form-misc-wrap').style.display = cat==='misc' ? 'block' : 'none';
+  document.getElementById('pesajes-container').innerHTML = '';
+  document.getElementById('pesajes-misc-container').innerHTML = '';
+  if (cat==='reactivo') addPesaje();
+  if (cat==='misc') addPesajeMisc();
+}
+
+function getUnitsForScale(scale) {
+  if (scale==='kg') return ['kg','g'];
+  if (scale==='gramera') return ['g','mg'];
+  if (scale==='analitica') return ['mg','µg'];
+  return ['g','mg','µg'];
+}
+
+function pesajeRowHTML(containerId, idx, scale, extra='') {
+  const units = getUnitsForScale(scale);
+  const opts = units.map(u=>`<option value="${u}">${u}</option>`).join('');
+  return `
+  <div class="pesaje-row" id="prow-${idx}">
+    ${idx>0?`<button class="btn-remove" onclick="removePesaje('prow-${idx}')">×</button>`:''}
+    <div class="row2">
+      <div>
+        <div class="field-label">Peso</div>
+        <input type="number" step="any" min="0" placeholder="0.00" id="pw-${idx}" style="margin:0"/>
+      </div>
+      <div>
+        <div class="field-label">Unidad</div>
+        <select id="pu-${idx}" style="margin:0">${opts}</select>
+      </div>
+    </div>
+    ${extra}
+  </div>`;
+}
+
+function addPesaje() {
+  const scale = document.getElementById('form-scale').value;
+  const c = document.getElementById('pesajes-container');
+  const idx = pesajeCount++;
+  c.insertAdjacentHTML('beforeend', pesajeRowHTML('pesajes-container', idx, scale));
+}
+function addPesajeMisc() {
+  const scale = document.getElementById('form-scale').value;
+  const c = document.getElementById('pesajes-misc-container');
+  const idx = pesajeCount++;
+  c.insertAdjacentHTML('beforeend', pesajeRowHTML('pesajes-misc-container', idx, scale));
+}
+function addPesajeFiltro() {
+  const c = document.getElementById('pesajes-filtro-container');
+  const idx = pesajeCount++;
+  c.insertAdjacentHTML('beforeend', `
+  <div class="pesaje-row" id="prow-${idx}">
+    ${idx>0?`<button class="btn-remove" onclick="removePesaje('prow-${idx}')">×</button>`:''}
+    <div class="row2">
+      <div>
+        <div class="field-label">Peso</div>
+        <input type="number" step="any" min="0" placeholder="0.00" id="pw-${idx}" style="margin:0"/>
+      </div>
+      <div>
+        <div class="field-label">Unidad</div>
+        <select id="pu-${idx}" style="margin:0">
+          <option value="g">g</option><option value="mg">mg</option><option value="µg">µg</option>
+        </select>
+      </div>
+    </div>
+  </div>`);
+}
+function removePesaje(rowId) {
+  const el = document.getElementById(rowId);
+  if (el) el.remove();
+}
+
+function collectPesajes(containerId) {
+  const rows = document.querySelectorAll(`#${containerId} .pesaje-row`);
+  const result = [];
+  rows.forEach(row => {
+    const idx = row.id.replace('prow-','');
+    const pw = document.getElementById(`pw-${idx}`);
+    const pu = document.getElementById(`pu-${idx}`);
+    if (pw && pu && pw.value) {
+      result.push({ peso: parseFloat(pw.value), unidad: pu.value });
+    }
+  });
+  return result;
+}
+
+function saveRecord() {
+  const date = document.getElementById('form-date').value;
+  const scale = document.getElementById('form-scale').value;
+  if (!date || !scale) { showToast('Completa fecha y tipo de balanza', true); return; }
+
+  let pesajes = [], category = '', extra = {};
+
+  if (scale === 'filtros') {
+    const filtroType = document.getElementById('form-filtro-type').value;
+    if (!filtroType) { showToast('Selecciona el tipo de filtro', true); return; }
+    pesajes = collectPesajes('pesajes-filtro-container');
+    if (!pesajes.length) { showToast('Agrega al menos un pesaje', true); return; }
+    category = 'filtro';
+    extra = { filtroType };
+  } else {
+    category = document.getElementById('form-category').value;
+    if (!category) { showToast('Selecciona la categoría', true); return; }
+    if (category === 'reactivo') {
+      const rname = document.getElementById('form-reactivo-name').value.trim();
+      if (!rname) { showToast('Escribe el nombre del reactivo', true); return; }
+      pesajes = collectPesajes('pesajes-container');
+      extra = { reactivoName: rname };
+    } else {
+      const miscType = document.getElementById('form-misc-type').value;
+      if (!miscType) { showToast('Selecciona el tipo de misceláneo', true); return; }
+      pesajes = collectPesajes('pesajes-misc-container');
+      extra = { miscType };
+    }
+    if (!pesajes.length) { showToast('Agrega al menos un pesaje con valor', true); return; }
+  }
+
+  const records = getRecords();
+  if (currentEditId) {
+    const idx = records.findIndex(r=>r.id===currentEditId);
+    if (idx>=0) {
+      records[idx] = { ...records[idx], date, scale, category, pesajes, extra, updatedAt: new Date().toISOString() };
+    }
+    showToast('Registro actualizado ✓');
+  } else {
+    const rec = {
+      id: uid(), studentName: currentUser.name, date, scale, category,
+      pesajes, extra, createdAt: new Date().toISOString(), sentToGestor: false
+    };
+    records.unshift(rec);
+    showToast('Registro guardado ✓');
+  }
+  saveRecords(records);
+  backToList();
+}
+
+function prefillForm(rec) {
+  document.getElementById('form-date').value = rec.date;
+  document.getElementById('form-scale').value = rec.scale;
+  onScaleChange();
+
+  if (rec.scale !== 'filtros') {
+    document.getElementById('form-category').value = rec.category;
+    onCategoryChange();
+  }
+
+  // clear auto-added pesajes
+  document.getElementById('pesajes-container').innerHTML = '';
+  document.getElementById('pesajes-misc-container').innerHTML = '';
+  document.getElementById('pesajes-filtro-container').innerHTML = '';
+  pesajeCount = 0;
+
+  if (rec.category === 'filtro') {
+    document.getElementById('form-filtro-type').value = rec.extra.filtroType || '';
+    rec.pesajes.forEach(()=>addPesajeFiltro());
+  } else if (rec.category === 'reactivo') {
+    document.getElementById('form-reactivo-name').value = rec.extra.reactivoName || '';
+    rec.pesajes.forEach(()=>addPesaje());
+  } else {
+    document.getElementById('form-misc-type').value = rec.extra.miscType || '';
+    rec.pesajes.forEach(()=>addPesajeMisc());
+  }
+
+  // Fill values after rows rendered
+  const containerId = rec.category==='filtro' ? 'pesajes-filtro-container'
+    : rec.category==='reactivo' ? 'pesajes-container' : 'pesajes-misc-container';
+  const rows = document.querySelectorAll(`#${containerId} .pesaje-row`);
+  rows.forEach((row, i) => {
+    const idx = row.id.replace('prow-','');
+    const pw = document.getElementById(`pw-${idx}`);
+    const pu = document.getElementById(`pu-${idx}`);
+    if (pw && rec.pesajes[i]) { pw.value = rec.pesajes[i].peso; pu.value = rec.pesajes[i].unidad; }
+  });
+}
+
+// ════════════════════════════════════════
+//   STUDENT RECORDS LIST
+// ════════════════════════════════════════
+function renderStudentRecords() {
+  const records = getRecords().filter(r=>r.studentName===currentUser.name);
+  const container = document.getElementById('student-records-list');
+  if (!records.length) {
+    container.innerHTML = `<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M8 8h8M8 16h4"/></svg><p>Sin registros aún.<br>Presiona <strong>+ Nuevo</strong> para empezar.</p></div>`;
+    return;
+  }
+  container.innerHTML = records.map(rec => {
+    const editable = isEditable(rec);
+    const sent = rec.sentToGestor;
+    return `
+    <div class="card" onclick="showDetail('${rec.id}')">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${scaleLabel(rec.scale)}</div>
+          <div class="meta">${formatDate(rec.date)}</div>
+        </div>
+        <span class="badge ${sent?'badge-blue':editable?'badge-green':'badge-red'}">
+          ${sent?'Enviado':editable?'Editable':'Cerrado'}
+        </span>
+      </div>
+      <div>
+        ${rec.category==='reactivo'?`<span class="chip">⚗ ${rec.extra.reactivoName}</span>`:''}
+        ${rec.category==='misc'?`<span class="chip">🧪 ${rec.extra.miscType}</span>`:''}
+        ${rec.category==='filtro'?`<span class="chip">🔬 ${rec.extra.filtroType}</span>`:''}
+        <span class="chip">${rec.pesajes.length} pesaje${rec.pesajes.length>1?'s':''}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════
+//   DETAIL MODAL
+// ════════════════════════════════════════
+function showDetail(recId) {
+  const rec = getRecords().find(r=>r.id===recId);
+  if (!rec) return;
+  const editable = isEditable(rec);
+  const isOwner = currentUser && currentUser.name === rec.studentName;
+
+  let pesajesHTML = rec.pesajes.map((p,i)=>
+    `<div class="detail-row"><span class="detail-label">Pesaje ${i+1}</span><span>${p.peso} ${p.unidad}</span></div>`
+  ).join('');
+
+  let extraHTML = '';
+  if (rec.category==='reactivo') extraHTML=`<div class="detail-row"><span class="detail-label">Reactivo</span><span>${rec.extra.reactivoName}</span></div>`;
+  if (rec.category==='misc') extraHTML=`<div class="detail-row"><span class="detail-label">Misceláneo</span><span>${rec.extra.miscType}</span></div>`;
+  if (rec.category==='filtro') extraHTML=`<div class="detail-row"><span class="detail-label">Filtro</span><span>${rec.extra.filtroType}</span></div>`;
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="detail-row"><span class="detail-label">Estudiante</span><span>${rec.studentName}</span></div>
+    <div class="detail-row"><span class="detail-label">Fecha</span><span>${formatDate(rec.date)}</span></div>
+    <div class="detail-row"><span class="detail-label">Balanza</span><span>${scaleLabel(rec.scale)}</span></div>
+    <div class="detail-row"><span class="detail-label">Categoría</span><span>${categoryLabel(rec.category)}</span></div>
+    ${extraHTML}${pesajesHTML}
+    <div class="detail-row"><span class="detail-label">Enviado al gestor</span><span>${rec.sentToGestor?'Sí':'No'}</span></div>
+  `;
+
+  const actions = document.getElementById('detail-actions');
+  actions.innerHTML = '';
+  if (isOwner && editable) {
+    actions.innerHTML = `
+      <button class="btn btn-secondary" onclick="showNewForm('${rec.id}')">✏️ Editar</button>
+      <button class="btn btn-danger" onclick="deleteRecord('${rec.id}')">🗑 Eliminar</button>
+    `;
+  }
+  openModal('detail-modal');
+}
+
+function deleteRecord(recId) {
+  const rec = getRecords().find(r=>r.id===recId);
+  if (!rec || !isEditable(rec)) { showToast('No se puede eliminar', true); return; }
+  if (!confirm('¿Eliminar este registro?')) return;
+  saveRecords(getRecords().filter(r=>r.id!==recId));
+  closeModal('detail-modal');
+  renderStudentRecords();
+  showToast('Registro eliminado');
+}
+
+// ════════════════════════════════════════
+//   SEND TO GESTOR
+// ════════════════════════════════════════
+function sendToGestor() {
+  const records = getRecords();
+  const myUnsent = records.filter(r=>r.studentName===currentUser.name && !r.sentToGestor);
+  if (!myUnsent.length) { showToast('No hay registros pendientes por enviar', true); return; }
+  myUnsent.forEach(r=>{ r.sentToGestor = true; r.sentAt = new Date().toISOString(); });
+  saveRecords(records);
+  renderStudentRecords();
+  showToast(`${myUnsent.length} registro(s) enviado(s) al gestor ✓`);
+}
+
+// ════════════════════════════════════════
+//   GESTOR
+// ════════════════════════════════════════
+function gestorTab(tab) {
+  gestorCurrentTab = tab;
+  document.getElementById('tab-todos-btn').classList.toggle('active', tab==='todos');
+  document.getElementById('tab-pendientes-btn').classList.toggle('active', tab==='pendientes');
+  renderGestorRecords();
+}
+
+function populateStudentFilter() {
+  const students = [...new Set(getRecords().map(r=>r.studentName))].sort();
+  const sel = document.getElementById('gestor-filter-student');
+  sel.innerHTML = '<option value="">Todos los estudiantes</option>' +
+    students.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+function renderGestorRecords() {
+  let records = getRecords();
+  if (gestorCurrentTab === 'pendientes') records = records.filter(r=>!r.sentToGestor);
+  else records = records.filter(r=>r.sentToGestor);
+
+  const filterStudent = document.getElementById('gestor-filter-student').value;
+  const filterScale = document.getElementById('gestor-filter-scale').value;
+  if (filterStudent) records = records.filter(r=>r.studentName===filterStudent);
+  if (filterScale) records = records.filter(r=>r.scale===filterScale);
+
+  const container = document.getElementById('gestor-records-list');
+  if (!records.length) {
+    container.innerHTML = `<div class="empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg><p>Sin registros en esta vista.</p></div>`;
+    return;
+  }
+  container.innerHTML = records.map(rec=>`
+    <div class="card" onclick="showDetail('${rec.id}')">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${rec.studentName}</div>
+          <div class="meta">${formatDate(rec.date)} · ${scaleLabel(rec.scale)}</div>
+        </div>
+        <span class="badge ${rec.sentToGestor?'badge-blue':'badge-yellow'}">
+          ${rec.sentToGestor?'Enviado':'Pendiente'}
+        </span>
+      </div>
+      <div>
+        ${rec.category==='reactivo'?`<span class="chip">⚗ ${rec.extra.reactivoName}</span>`:''}
+        ${rec.category==='misc'?`<span class="chip">🧪 ${rec.extra.miscType}</span>`:''}
+        ${rec.category==='filtro'?`<span class="chip">🔬 ${rec.extra.filtroType}</span>`:''}
+        <span class="chip">${rec.pesajes.length} pesaje${rec.pesajes.length>1?'s':''}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ════════════════════════════════════════
+//   EXPORT CSV
+// ════════════════════════════════════════
+function exportExcel() {
+  const records = getRecords().filter(r=>r.sentToGestor);
+  if (!records.length) { showToast('No hay registros enviados para exportar', true); return; }
+
+  const rows = [['Estudiante','Fecha','Tipo Balanza','Categoría','Reactivo/Misc/Filtro','# Pesaje','Peso','Unidad','Creado','Enviado']];
+  records.forEach(rec => {
+    rec.pesajes.forEach((p,i) => {
+      let item = '';
+      if (rec.category==='reactivo') item=rec.extra.reactivoName;
+      else if (rec.category==='misc') item=rec.extra.miscType;
+      else item=rec.extra.filtroType;
+      rows.push([
+        rec.studentName, rec.date, scaleLabel(rec.scale),
+        categoryLabel(rec.category), item,
+        i+1, p.peso, p.unidad,
+        rec.createdAt ? rec.createdAt.slice(0,10) : '',
+        rec.sentAt ? rec.sentAt.slice(0,10) : ''
+      ]);
+    });
+  });
+
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `labbalance_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('Exportado ✓');
+}
+
+// ════════════════════════════════════════
+//   INIT
+// ════════════════════════════════════════
+// Close modal clicking outside
+document.getElementById('detail-modal').addEventListener('click', function(e){
+  if (e.target === this) closeModal('detail-modal');
+});
+</script>
+</body>
+</html>
