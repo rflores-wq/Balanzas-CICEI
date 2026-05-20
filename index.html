@@ -627,27 +627,57 @@ let gestorCurrentTab = 'todos';
 let pesajeCount = 0;
 
 // ════════════════════════════════════════
-//   STORAGE
+//   GOOGLE SHEETS API
 // ════════════════════════════════════════
-function getRecords() {
-  return JSON.parse(localStorage.getItem('lb_records') || '[]');
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwkTSevsGwW3Ws-zBkNc4TxZ2gLoHk2HMzXn-nHarQXhMA8ZZMDD7GaZe-0rLGvxb6v/exec";
+
+// Cache en memoria para esta sesión
+let _recordsCache = null;
+let _studentsCache = null;
+
+function showLoading(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg || '⏳ Cargando...';
+  t.className = 'toast show';
 }
-function saveRecords(arr) {
-  localStorage.setItem('lb_records', JSON.stringify(arr));
+function hideLoading() {
+  const t = document.getElementById('toast');
+  t.classList.remove('show');
 }
-function getSentIds() {
-  return JSON.parse(localStorage.getItem('lb_sent') || '[]');
+
+async function apiCall(body) {
+  const res = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Error del servidor');
+  return data;
 }
-function setSentIds(arr) {
-  localStorage.setItem('lb_sent', JSON.stringify(arr));
+
+// Cache helpers (localStorage como caché local)
+function getRecordsCache() {
+  if (_recordsCache) return _recordsCache;
+  return JSON.parse(localStorage.getItem('lb_records_cache') || '[]');
 }
-// Estudiantes registrados: [{name, carnet, pass, status: 'pending'|'approved'|'rejected', createdAt}]
-function getStudents() {
-  return JSON.parse(localStorage.getItem('lb_students') || '[]');
+function setRecordsCache(arr) {
+  _recordsCache = arr;
+  localStorage.setItem('lb_records_cache', JSON.stringify(arr));
 }
-function saveStudents(arr) {
-  localStorage.setItem('lb_students', JSON.stringify(arr));
+function getStudentsCache() {
+  if (_studentsCache) return _studentsCache;
+  return JSON.parse(localStorage.getItem('lb_students_cache') || '[]');
 }
+function setStudentsCache(arr) {
+  _studentsCache = arr;
+  localStorage.setItem('lb_students_cache', JSON.stringify(arr));
+}
+
+// Compatibilidad con funciones síncronas del código existente
+function getRecords() { return getRecordsCache(); }
+function saveRecords(arr) { setRecordsCache(arr); }
+function getStudents() { return getStudentsCache(); }
+function saveStudents(arr) { setStudentsCache(arr); }
 
 // ════════════════════════════════════════
 //   UTILS
@@ -703,7 +733,7 @@ document.getElementById('login-role').addEventListener('change', function(){
 // Mostrar botón de registro por defecto para estudiante
 document.getElementById('btn-go-register').style.display = 'block';
 
-function doLogin() {
+async function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const role = document.getElementById('login-role').value;
   if (!name) { showToast('Ingresa tu nombre', true); return; }
@@ -711,10 +741,18 @@ function doLogin() {
   if (role === 'gestor') {
     const pass = document.getElementById('gestor-pass').value;
     if (pass !== GESTOR_PASSWORD) { showToast('Contraseña incorrecta', true); return; }
+    showLoading('⏳ Entrando...');
+    try {
+      const data = await apiCall({ action: 'getStudents' });
+      setStudentsCache(data.students);
+      const rdata = await apiCall({ action: 'getRecords', role: 'gestor' });
+      setRecordsCache(rdata.records);
+    } catch(e) { /* use cache if offline */ }
+    hideLoading();
     currentUser = { name, role };
     localStorage.setItem('lb_session', JSON.stringify({ name, role: 'gestor' }));
     if (document.getElementById('remember-me')?.checked) {
-      localStorage.setItem('lb_remember', JSON.stringify({ name, role: 'gestor', pass: document.getElementById('gestor-pass').value }));
+      localStorage.setItem('lb_remember', JSON.stringify({ name, role: 'gestor', pass }));
     } else { localStorage.removeItem('lb_remember'); }
     document.getElementById('gestor-header-name').textContent = name;
     document.getElementById('gestor-avatar').textContent = initials(name);
@@ -729,39 +767,32 @@ function doLogin() {
     return;
   }
 
-  // Estudiante
+  // Estudiante — verificar contra Sheets
   const pass = document.getElementById('login-pass').value;
   if (!pass) { showToast('Ingresa tu contraseña', true); return; }
-
-  const students = getStudents();
-  const student = students.find(s => s.name.toLowerCase() === name.toLowerCase());
-
-  if (!student) {
-    showToast('Nombre no registrado. ¿Ya te registraste?', true); return;
+  showLoading('⏳ Verificando...');
+  try {
+    const data = await apiCall({ action: 'loginStudent', name, pass: simpleHash(pass) });
+    hideLoading();
+    // Cargar registros del estudiante
+    const rdata = await apiCall({ action: 'getRecords', role: 'estudiante', studentName: data.student.name });
+    setRecordsCache(rdata.records);
+    currentUser = { name: data.student.name, role: 'estudiante' };
+    localStorage.setItem('lb_session', JSON.stringify({ name: data.student.name, role: 'estudiante' }));
+    if (document.getElementById('remember-me')?.checked) {
+      localStorage.setItem('lb_remember', JSON.stringify({ name: data.student.name, role: 'estudiante', pass }));
+    } else { localStorage.removeItem('lb_remember'); }
+    document.getElementById('student-header-name').textContent = data.student.name;
+    document.getElementById('student-avatar').textContent = initials(data.student.name);
+    renderStudentRecords();
+    showScreen('screen-student');
+  } catch(e) {
+    hideLoading();
+    showToast(e.message, true);
   }
-  if (student.status === 'pending') {
-    showToast('Tu cuenta está pendiente de aprobación', true); return;
-  }
-  if (student.status === 'rejected') {
-    showToast('Tu cuenta fue rechazada. Contacta al gestor.', true); return;
-  }
-  const hashedInput = simpleHash(pass);
-  if (student.pass !== hashedInput && student.rawPass !== pass) {
-    showToast('Contraseña incorrecta', true); return;
-  }
-
-  currentUser = { name: student.name, role: 'estudiante' };
-  localStorage.setItem('lb_session', JSON.stringify({ name: student.name, role: 'estudiante' }));
-  if (document.getElementById('remember-me')?.checked) {
-    localStorage.setItem('lb_remember', JSON.stringify({ name: student.name, role: 'estudiante', pass }));
-  } else { localStorage.removeItem('lb_remember'); }
-  document.getElementById('student-header-name').textContent = student.name;
-  document.getElementById('student-avatar').textContent = initials(student.name);
-  renderStudentRecords();
-  showScreen('screen-student');
 }
 
-function doRegister() {
+async function doRegister() {
   const name   = document.getElementById('reg-name').value.trim();
   const carnet = document.getElementById('reg-carnet').value.trim();
   const pass   = document.getElementById('reg-pass').value;
@@ -772,20 +803,19 @@ function doRegister() {
   if (!pass || pass.length < 4) { showToast('La contraseña debe tener al menos 4 caracteres', true); return; }
   if (pass !== pass2) { showToast('Las contraseñas no coinciden', true); return; }
 
-  const students = getStudents();
-  const exists = students.find(s => s.name.toLowerCase() === name.toLowerCase() || s.carnet === carnet);
-  if (exists) { showToast('Ya existe un registro con ese nombre o carnet', true); return; }
-
-  students.push({ name, carnet, pass: simpleHash(pass), rawPass: pass, status: 'pending', createdAt: new Date().toISOString() });
-  saveStudents(students);
-
-  // Limpiar campos
-  document.getElementById('reg-name').value = '';
-  document.getElementById('reg-carnet').value = '';
-  document.getElementById('reg-pass').value = '';
-  document.getElementById('reg-pass2').value = '';
-
-  showPanel('panel-pending');
+  showLoading('⏳ Enviando solicitud...');
+  try {
+    await apiCall({ action: 'registerStudent', name, carnet, pass: simpleHash(pass) });
+    hideLoading();
+    document.getElementById('reg-name').value = '';
+    document.getElementById('reg-carnet').value = '';
+    document.getElementById('reg-pass').value = '';
+    document.getElementById('reg-pass2').value = '';
+    showPanel('panel-pending');
+  } catch(e) {
+    hideLoading();
+    showToast(e.message, true);
+  }
 }
 
 function doLogout() {
@@ -806,7 +836,7 @@ function doLogout() {
 //   GESTIÓN DE ESTUDIANTES (GESTOR)
 // ════════════════════════════════════════
 function updatePendingBadge() {
-  const pending = getStudents().filter(s => s.status === 'pending').length;
+  const pending = getStudentsCache().filter(s => s.status === 'pending').length;
   const badge = document.getElementById('badge-pendientes-count');
   if (badge) {
     badge.textContent = pending;
@@ -816,7 +846,7 @@ function updatePendingBadge() {
 }
 
 function notifyGestorPending() {
-  const pending = getStudents().filter(s => s.status === 'pending').length;
+  const pending = getStudentsCache().filter(s => s.status === 'pending').length;
   if (pending > 0) {
     setTimeout(() => {
       showToast(`📋 Tienes ${pending} solicitud${pending>1?'es':''} de estudiante${pending>1?'s':''} pendiente${pending>1?'s':''} de aprobación`, false, 4000);
@@ -824,8 +854,14 @@ function notifyGestorPending() {
   }
 }
 
-function renderGestorStudents() {
-  const students = getStudents();
+async function renderGestorStudents() {
+  showLoading('⏳ Cargando estudiantes...');
+  try {
+    const data = await apiCall({ action: 'getStudents' });
+    setStudentsCache(data.students);
+    hideLoading();
+  } catch(e) { hideLoading(); }
+  const students = getStudentsCache();
   const pending  = students.filter(s => s.status === 'pending');
   const approved = students.filter(s => s.status === 'approved');
 
@@ -872,30 +908,45 @@ function renderGestorStudents() {
   }
 }
 
-function approveStudent(carnet) {
-  const students = getStudents();
-  const s = students.find(x => x.carnet === carnet);
-  if (s) { s.status = 'approved'; saveStudents(students); }
-  updatePendingBadge();
-  renderGestorStudents();
-  showToast(`${s ? s.name : 'Estudiante'} aprobado ✓`);
+async function approveStudent(carnet) {
+  showLoading('⏳ Aprobando...');
+  try {
+    await apiCall({ action: 'approveStudent', carnet });
+    const students = getStudents();
+    const s = students.find(x => x.carnet === carnet);
+    if (s) { s.status = 'approved'; saveStudents(students); }
+    hideLoading();
+    updatePendingBadge();
+    renderGestorStudents();
+    showToast(`${s ? s.name : 'Estudiante'} aprobado ✓`);
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
-function rejectStudent(carnet) {
+async function rejectStudent(carnet) {
   if (!confirm('¿Rechazar esta solicitud?')) return;
-  const students = getStudents();
-  const s = students.find(x => x.carnet === carnet);
-  if (s) { s.status = 'rejected'; saveStudents(students); }
-  updatePendingBadge();
-  renderGestorStudents();
-  showToast('Solicitud rechazada');
+  showLoading('⏳ Rechazando...');
+  try {
+    await apiCall({ action: 'rejectStudent', carnet });
+    const students = getStudents();
+    const s = students.find(x => x.carnet === carnet);
+    if (s) { s.status = 'rejected'; saveStudents(students); }
+    hideLoading();
+    updatePendingBadge();
+    renderGestorStudents();
+    showToast('Solicitud rechazada');
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
-function revokeStudent(carnet) {
+async function revokeStudent(carnet) {
   if (!confirm('¿Revocar el acceso de este estudiante?')) return;
-  const students = getStudents();
-  const s = students.find(x => x.carnet === carnet);
-  if (s) { s.status = 'rejected'; saveStudents(students); }
-  renderGestorStudents();
-  showToast('Acceso revocado');
+  showLoading('⏳ Revocando...');
+  try {
+    await apiCall({ action: 'revokeStudent', carnet });
+    const students = getStudents();
+    const s = students.find(x => x.carnet === carnet);
+    if (s) { s.status = 'rejected'; saveStudents(students); }
+    hideLoading();
+    renderGestorStudents();
+    showToast('Acceso revocado');
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════
@@ -1062,7 +1113,7 @@ function collectPesajes(containerId) {
   return result;
 }
 
-function saveRecord() {
+async function saveRecord() {
   const date = document.getElementById('form-date').value;
   const scale = document.getElementById('form-scale').value;
   if (!date || !scale) { showToast('Completa fecha y tipo de balanza', true); return; }
@@ -1094,22 +1145,37 @@ function saveRecord() {
   }
 
   const records = getRecords();
+  let rec;
   if (currentEditId) {
-    const idx = records.findIndex(r=>r.id===currentEditId);
-    if (idx>=0) {
+    const idx = records.findIndex(r => r.id === currentEditId);
+    if (idx >= 0) {
       records[idx] = { ...records[idx], date, scale, category, pesajes, extra, updatedAt: new Date().toISOString() };
+      rec = records[idx];
+      addHistory(rec, 'Editado');
     }
-    showToast('Registro actualizado ✓');
   } else {
-    const rec = {
+    rec = {
       id: uid(), studentName: currentUser.name, date, scale, category,
-      pesajes, extra, createdAt: new Date().toISOString(), sentToGestor: false
+      pesajes, extra, createdAt: new Date().toISOString(), sentToGestor: false,
+      comments: [], history: [{ action: 'Creado', who: currentUser.name, at: new Date().toISOString() }]
     };
     records.unshift(rec);
-    showToast('Registro guardado ✓');
   }
-  saveRecords(records);
+
+  // Save to cache immediately for snappy UI
+  setRecordsCache(records);
+  clearDraft();
   backToList();
+  renderStudentRecords();
+  showToast(currentEditId ? 'Guardando...' : 'Guardando...');
+
+  // Then sync to Sheets
+  try {
+    await apiCall({ action: 'saveRecord', record: rec, pesajes: rec.pesajes });
+    showToast(currentEditId ? 'Registro actualizado ✓' : 'Registro guardado ✓');
+  } catch(e) {
+    showToast('⚠️ Guardado localmente. Sin conexión al servidor.', true, 4000);
+  }
 }
 
 function prefillForm(rec) {
@@ -1199,8 +1265,16 @@ function renderStudentRecords() {
 // ════════════════════════════════════════
 //   DETAIL MODAL
 // ════════════════════════════════════════
-function showDetail(recId) {
-  const rec = getRecords().find(r=>r.id===recId);
+async function showDetail(recId) {
+  let rec = getRecords().find(r=>r.id===recId);
+  // Refresh from Sheets for latest comments/history
+  if (currentUser.role === 'gestor') {
+    try {
+      const data = await apiCall({ action: 'getRecords', role: 'gestor' });
+      setRecordsCache(data.records);
+      rec = data.records.find(r=>r.id===recId);
+    } catch(e) { /* use cache */ }
+  }
   if (!rec) return;
   const editable = isEditable(rec);
   const isOwner = currentUser && currentUser.name === rec.studentName;
@@ -1234,33 +1308,46 @@ function showDetail(recId) {
   openModal('detail-modal');
 }
 
-function deleteRecord(recId) {
+async function deleteRecord(recId) {
   const rec = getRecords().find(r=>r.id===recId);
   if (!rec || !isEditable(rec)) { showToast('No se puede eliminar', true); return; }
   if (!confirm('¿Eliminar este registro?')) return;
-  saveRecords(getRecords().filter(r=>r.id!==recId));
-  closeModal('detail-modal');
-  renderStudentRecords();
-  showToast('Registro eliminado');
+  showLoading('⏳ Eliminando...');
+  try {
+    await apiCall({ action: 'deleteRecord', id: recId });
+    setRecordsCache(getRecords().filter(r=>r.id!==recId));
+    hideLoading();
+    closeModal('detail-modal');
+    renderStudentRecords();
+    showToast('Registro eliminado');
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════
 //   SEND TO GESTOR
 // ════════════════════════════════════════
-function sendToGestor() {
+async function sendToGestor() {
   const records = getRecords();
   const myUnsent = records.filter(r=>r.studentName===currentUser.name && !r.sentToGestor);
   if (!myUnsent.length) { showToast('No hay registros pendientes por enviar', true); return; }
-  myUnsent.forEach(r=>{ r.sentToGestor = true; r.sentAt = new Date().toISOString(); });
-  saveRecords(records);
-  renderStudentRecords();
-  showToast(`${myUnsent.length} registro(s) enviado(s) al gestor ✓`);
+  showLoading(`⏳ Enviando ${myUnsent.length} registro(s)...`);
+  try {
+    for (const r of myUnsent) {
+      await apiCall({ action: 'sendToGestor', id: r.id });
+      r.sentToGestor = true;
+      r.sentAt = new Date().toISOString();
+    }
+    setRecordsCache(records);
+    hideLoading();
+    renderStudentRecords();
+    showToast(`${myUnsent.length} registro(s) enviado(s) al gestor ✓`);
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════
 //   GESTOR
 // ════════════════════════════════════════
-function gestorTab(tab) {
+async function gestorTab(tab) {
   gestorCurrentTab = tab;
   document.getElementById('tab-todos-btn').classList.toggle('active', tab==='todos');
   document.getElementById('tab-pendientes-btn').classList.toggle('active', tab==='pendientes');
@@ -1271,8 +1358,16 @@ function gestorTab(tab) {
   document.getElementById('gestor-view-estudiantes').style.display = isEstudiantes ? 'block' : 'none';
 
   if (isEstudiantes) {
-    renderGestorStudents();
+    await renderGestorStudents();
+    updatePendingBadge();
   } else {
+    // Refresh records from Sheets
+    showLoading('⏳ Actualizando registros...');
+    try {
+      const rdata = await apiCall({ action: 'getRecords', role: 'gestor' });
+      setRecordsCache(rdata.records);
+      hideLoading();
+    } catch(e) { hideLoading(); }
     renderGestorRecords();
     renderGestorStats();
   }
@@ -1285,7 +1380,13 @@ function populateStudentFilter() {
     students.map(s=>`<option value="${s}">${s}</option>`).join('');
 }
 
-function renderGestorRecords() {
+async function renderGestorRecords() {
+  showLoading('⏳ Cargando registros...');
+  try {
+    const data = await apiCall({ action: 'getRecords', role: 'gestor' });
+    setRecordsCache(data.records);
+    hideLoading();
+  } catch(e) { hideLoading(); showToast('⚠️ Usando datos locales', true); }
   let records = getRecords();
   if (gestorCurrentTab === 'pendientes') records = records.filter(r=>!r.sentToGestor);
   else records = records.filter(r=>r.sentToGestor);
@@ -1418,8 +1519,9 @@ function toggleTheme() {
       populateStudentFilter();
       updatePendingBadge();
       updateNewRecordsBadge();
-      setTimeout(renderGestorStats, 100);
-      notifyGestorPending();
+      // Refresh from Sheets in background
+      apiCall({ action: 'getStudents' }).then(d => { setStudentsCache(d.students); updatePendingBadge(); notifyGestorPending(); renderGestorStats(); }).catch(()=>{});
+      apiCall({ action: 'getRecords', role: 'gestor' }).then(d => { setRecordsCache(d.records); renderGestorRecords(); populateStudentFilter(); renderGestorStats(); }).catch(()=>{});
       showScreen('screen-gestor');
     } else {
       // verify student still approved
@@ -1429,6 +1531,8 @@ function toggleTheme() {
       document.getElementById('student-header-name').textContent = sess.name;
       document.getElementById('student-avatar').textContent = initials(sess.name);
       renderStudentRecords();
+      // Refresh from Sheets in background
+      apiCall({ action: 'getRecords', role: 'estudiante', studentName: sess.name }).then(d => { setRecordsCache(d.records); renderStudentRecords(); }).catch(()=>{});
       showScreen('screen-student');
     }
     resetSessionTimer();
@@ -1664,20 +1768,27 @@ function drawSimpleQR(canvasId, text) {
 //   GESTOR COMMENT
 // ════════════════════════════════════════
 let currentDetailRecId = null;
-function saveGestorComment() {
+async function saveGestorComment() {
   if (!currentDetailRecId) return;
   const text = document.getElementById('gestor-comment-input').value.trim();
   if (!text) { showToast('Escribe un comentario', true); return; }
-  const records = getRecords();
-  const rec = records.find(r => r.id === currentDetailRecId);
-  if (!rec) return;
-  if (!rec.comments) rec.comments = [];
-  rec.comments.push({ text, who: currentUser.name, at: new Date().toISOString() });
-  addHistory(rec, 'Comentario agregado');
-  saveRecords(records);
-  renderExistingComments(rec);
-  document.getElementById('gestor-comment-input').value = '';
-  showToast('Comentario guardado ✓');
+  const comment = { text, who: currentUser.name, at: new Date().toISOString() };
+  showLoading('⏳ Guardando comentario...');
+  try {
+    await apiCall({ action: 'addComment', id: currentDetailRecId, comment });
+    const records = getRecords();
+    const rec = records.find(r => r.id === currentDetailRecId);
+    if (rec) {
+      if (!rec.comments) rec.comments = [];
+      rec.comments.push(comment);
+      addHistory(rec, 'Comentario agregado');
+      setRecordsCache(records);
+      renderExistingComments(rec);
+    }
+    hideLoading();
+    document.getElementById('gestor-comment-input').value = '';
+    showToast('Comentario guardado ✓');
+  } catch(e) { hideLoading(); showToast(e.message, true); }
 }
 
 function renderExistingComments(rec) {
