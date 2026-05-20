@@ -315,7 +315,7 @@
     </div>
     <div class="field">
       <div class="field-label">Contraseña</div>
-      <input type="text" id="login-pass" placeholder="Tu contraseña"/>
+      <input type="password" id="login-pass" placeholder="Tu contraseña"/>
     </div>
     <div class="field">
       <div class="field-label">Rol</div>
@@ -352,11 +352,11 @@
       </div>
       <div class="field">
         <div class="field-label">Contraseña</div>
-        <input type="text" id="reg-pass" placeholder="Mínimo 4 caracteres"/>
+        <input type="password" id="reg-pass" placeholder="Mínimo 4 caracteres"/>
       </div>
       <div class="field">
         <div class="field-label">Confirmar contraseña</div>
-        <input type="text" id="reg-pass2" placeholder="Repetir contraseña"/>
+        <input type="password" id="reg-pass2" placeholder="Repetir contraseña"/>
       </div>
       <button class="btn btn-primary" onclick="doRegister()">Enviar solicitud →</button>
       <button class="btn btn-secondary" onclick="showPanel('panel-login')" style="margin-top:0.6rem;">Cancelar</button>
@@ -646,11 +646,13 @@ function hideLoading() {
 }
 
 async function apiCall(body) {
-  const res = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
+  const encoded = encodeURIComponent(JSON.stringify(body));
+  const url = SCRIPT_URL + '?data=' + encoded;
+  const res = await fetch(url, { method: 'GET' });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); }
+  catch(e) { throw new Error('Respuesta inválida del servidor'); }
   if (!data.ok) throw new Error(data.error || 'Error del servidor');
   return data;
 }
