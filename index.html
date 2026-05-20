@@ -328,6 +328,10 @@
       <div class="field-label">Contraseña de gestor</div>
       <input type="text" id="gestor-pass" placeholder="••••••"/>
     </div>
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">
+      <input type="checkbox" id="remember-me" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;"/>
+      <label for="remember-me" style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;">Recordar nombre y contraseña</label>
+    </div>
     <button class="btn btn-primary" onclick="doLogin()">Entrar →</button>
     <button class="btn btn-secondary" id="btn-go-register" onclick="showPanel('panel-register')" style="margin-top:0.6rem;display:none;">¿Primera vez? Regístrate</button>
     </div><!-- /panel-login -->
@@ -708,6 +712,10 @@ function doLogin() {
     const pass = document.getElementById('gestor-pass').value;
     if (pass !== GESTOR_PASSWORD) { showToast('Contraseña incorrecta', true); return; }
     currentUser = { name, role };
+    localStorage.setItem('lb_session', JSON.stringify({ name, role: 'gestor' }));
+    if (document.getElementById('remember-me')?.checked) {
+      localStorage.setItem('lb_remember', JSON.stringify({ name, role: 'gestor', pass: document.getElementById('gestor-pass').value }));
+    } else { localStorage.removeItem('lb_remember'); }
     document.getElementById('gestor-header-name').textContent = name;
     document.getElementById('gestor-avatar').textContent = initials(name);
     renderGestorRecords();
@@ -716,6 +724,7 @@ function doLogin() {
     updateNewRecordsBadge();
     markRecordsAsSeen();
     setTimeout(renderGestorStats, 100);
+    notifyGestorPending();
     showScreen('screen-gestor');
     return;
   }
@@ -742,6 +751,10 @@ function doLogin() {
   }
 
   currentUser = { name: student.name, role: 'estudiante' };
+  localStorage.setItem('lb_session', JSON.stringify({ name: student.name, role: 'estudiante' }));
+  if (document.getElementById('remember-me')?.checked) {
+    localStorage.setItem('lb_remember', JSON.stringify({ name: student.name, role: 'estudiante', pass }));
+  } else { localStorage.removeItem('lb_remember'); }
   document.getElementById('student-header-name').textContent = student.name;
   document.getElementById('student-avatar').textContent = initials(student.name);
   renderStudentRecords();
@@ -777,6 +790,7 @@ function doRegister() {
 
 function doLogout() {
   currentUser = null;
+  localStorage.removeItem('lb_session');
   document.getElementById('login-name').value = '';
   document.getElementById('login-pass').value = '';
   document.getElementById('login-role').value = 'estudiante';
@@ -798,6 +812,16 @@ function updatePendingBadge() {
     badge.textContent = pending;
     badge.style.display = pending > 0 ? 'flex' : 'none';
   }
+  return pending;
+}
+
+function notifyGestorPending() {
+  const pending = getStudents().filter(s => s.status === 'pending').length;
+  if (pending > 0) {
+    setTimeout(() => {
+      showToast(`📋 Tienes ${pending} solicitud${pending>1?'es':''} de estudiante${pending>1?'s':''} pendiente${pending>1?'s':''} de aprobación`, false, 4000);
+    }, 800);
+  }
 }
 
 function renderGestorStudents() {
@@ -811,6 +835,8 @@ function renderGestorStudents() {
   if (!pending.length) {
     pendingEl.innerHTML = `<div class="empty"><p>No hay solicitudes pendientes.</p></div>`;
   } else {
+    // Also fire a toast reminder each time the tab is opened
+    showToast(`📋 ${pending.length} solicitud${pending.length>1?'es':''} pendiente${pending.length>1?'s':''}`, false, 3000);
     pendingEl.innerHTML = pending.map(s => `
       <div class="card" style="margin-bottom:0.6rem;">
         <div class="card-header">
@@ -1355,6 +1381,58 @@ function toggleTheme() {
       if (el) el.textContent = '☀️';
     });
   }
+})();
+
+// ── AUTO-FILL REMEMBERED CREDENTIALS ──
+(function fillRemembered() {
+  const raw = localStorage.getItem('lb_remember');
+  if (!raw) return;
+  try {
+    const r = JSON.parse(raw);
+    const nameEl = document.getElementById('login-name');
+    const passEl = document.getElementById('login-pass');
+    const roleEl = document.getElementById('login-role');
+    const remEl  = document.getElementById('remember-me');
+    if (nameEl) nameEl.value = r.name || '';
+    if (passEl) passEl.value = r.pass || '';
+    if (roleEl) { roleEl.value = r.role || 'estudiante'; roleEl.dispatchEvent(new Event('change')); }
+    if (remEl)  remEl.checked = true;
+    if (r.role === 'gestor') {
+      const gp = document.getElementById('gestor-pass');
+      if (gp) gp.value = r.pass || '';
+    }
+  } catch(e) {}
+})();
+
+// ── AUTO-RESTORE SESSION ON REFRESH ──
+(function restoreSession() {
+  const raw = localStorage.getItem('lb_session');
+  if (!raw) return;
+  try {
+    const sess = JSON.parse(raw);
+    currentUser = sess;
+    if (sess.role === 'gestor') {
+      document.getElementById('gestor-header-name').textContent = sess.name;
+      document.getElementById('gestor-avatar').textContent = initials(sess.name);
+      renderGestorRecords();
+      populateStudentFilter();
+      updatePendingBadge();
+      updateNewRecordsBadge();
+      setTimeout(renderGestorStats, 100);
+      notifyGestorPending();
+      showScreen('screen-gestor');
+    } else {
+      // verify student still approved
+      const students = getStudents();
+      const student = students.find(s => s.name === sess.name && s.status === 'approved');
+      if (!student) { localStorage.removeItem('lb_session'); return; }
+      document.getElementById('student-header-name').textContent = sess.name;
+      document.getElementById('student-avatar').textContent = initials(sess.name);
+      renderStudentRecords();
+      showScreen('screen-student');
+    }
+    resetSessionTimer();
+  } catch(e) { localStorage.removeItem('lb_session'); }
 })();
 
 // ════════════════════════════════════════
